@@ -11,15 +11,15 @@
 #define FET_ON 9
 
 //config section
+#define INITIAL_STATUS 1 //should we turn on febex on power on?
 #define SHOWVERSION 1
 #define SHOWRAW 0
 #define SHOWCAL 1
 #define SHOWUSAGE 1
 #define SHOWSTATUS 1
 #define SHOW_TOGGLE 0
-
 #define MAX9611 1
-#define ENABLE_VOUT2 0
+#define ENABLE_VOUT2 1
 
 // end of config
 
@@ -29,10 +29,9 @@
 #define I2C_MAX9611 (0xe0)>>1 // MAX9611
 #endif
 
-uint32_t cal[]={10, 179, 179, 179, 125, 145};
+uint32_t cal[]={-1, 179, 179, 179, 125, 145, 1};
 // voltages in 1e-4 V per adc unit
 // current  in 1e-4 A per adc unit
-
 
 enum sensor_t
   {
@@ -53,11 +52,11 @@ static struct
   const char* name;
 }
   data_src[]={
-    {dev_time, -1, "Time_us"},
+    {dev_time, -1, "Time"},
     {adc, PIN_VIN, "Vin"}, {adc, PIN_VBUF, "Vbuf"}, {adc, PIN_VOUT, "Vout"},
     {max9611, 0x00, "Iout"}
 #if ENABLE_VOUT2
-    {max9611, 0x02, "Vout2"}
+    , {max9611, 0x02, "Vout2"}
 #endif
     // , {max9611, 0x08, "Temp"}
   };
@@ -119,9 +118,6 @@ int main()
 #endif
 #endif
   
-
-  
-
   uint32_t data_raw[num_sensors];
   uint32_t data_cal[num_sensors]; // in mV,mA
 
@@ -134,7 +130,7 @@ int main()
   
   int32_t n=SHOWRAW?-50:0;
   printf_P(PSTR("       Startup finished.\n\r"));
-  bool desired_power=1; //switch on if cap is full
+  bool desired_power=INITIAL_STATUS; //switch on if cap is full
   bool is_on=0;
   while(1)
     {
@@ -158,9 +154,11 @@ int main()
       
       if (n<1 && SHOWRAW)
 	{
-      printf_P(PSTR("\x1b[H %d"), (int)n);
-        continue;
-        }  
+	  printf_P(PSTR("\x1b[H %d"), (int)n);
+	  continue;
+        }
+
+
       for (int i=0; i<num_sensors; i++)
 	{
 	  //	  printf_P(PSTR("step %d %d\r\n"), n, i);
@@ -171,8 +169,11 @@ int main()
 	  data_ssum[i]+=data_raw[i]*data_raw[i];
 
 	  data_cal[i]=cal[i]*data_raw[i]/10;
-
 	}
+      // time handling (us -> ms)
+      data_cal[0]=data_raw[0]/1000;
+
+      
       // basically a two stop hysteresis:
       // turn FET on if cap is full, turn it off if Vin fails.
       
@@ -226,20 +227,20 @@ int main()
       if (!(n%5))
 	{
 #if SHOWANY
-	  printf_P(PSTR("\x1b[H"));
+	  printf_P(PSTR("\x1b[H\x1b[J"));
 #endif
 #if SHOWVERSION
 	  printf_P(PSTR("Febex power delay board firmware, git " COMMIT "\n"));
 #endif
 #if SHOWRAW //print raw
 	  printf_P(PSTR("%10s   %10s   %10s   %10s   n=%lu\r\n"),  "_Name_", "_Latest_", "_Mean_", "_RMS_", n); //
-	  for (int i=1; i<num_sensors; i++)
+	  for (int i=0; i<num_sensors; i++)
 	    printf_P(PSTR("%10s   %10ld   %10lu   %10lu\r\n"), data_src[i].name, data_raw[i], uint32_t(data_sum[i]/n), 
 		     uint32_t(sqrt(data_ssum[i]/n-(data_sum[i]*data_sum[i]/(n*n)) )));
 #endif
 #if SHOWCAL
 	  printf_P(PSTR("%10s   %10s    \r\n"), "_Name_", "_Latest (mV/mA)_"); //
-	  for (int i=1; i<num_sensors; i++)
+	  for (int i=0; i<num_sensors; i++)
 	    printf_P(PSTR("%10s   %10ld\r\n"), data_src[i].name, data_cal[i]);
 	    //	    printf_P(PSTR("%d  %10s   %10d.%03d\r\n"), i, data_src[i].name, data_cal[i]/1000, data_cal[i]%1000);
 #endif
